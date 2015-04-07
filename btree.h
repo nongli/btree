@@ -9,6 +9,11 @@
 // Must be 3+
 #define ORDER 7
 
+// Implementation of a B+ tree. This is probably "atypical" in at least these ways:
+//  - Maintains parent pointers
+//  - Every level is a doubly-linked list
+//  - Every internal node maintains the min/max for the subtree under it.
+// These modifications make concurrency pretty much impossible.
 class BTree {
  public:
   BTree() : size_(0) {

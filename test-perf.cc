@@ -16,7 +16,7 @@ struct TestOp {
 
 template<typename Tree>
 int64_t TestPerf(const char* name, const vector<TestOp>& ops, int num_iters) {
-  printf("Testing %s\n", name);
+  printf("Testing %s", name);
   int64_t num_finds = 0;
 
   auto start = chrono::high_resolution_clock::now();
@@ -48,8 +48,7 @@ int64_t TestPerf(const char* name, const vector<TestOp>& ops, int num_iters) {
   auto end = chrono::high_resolution_clock::now();
   auto seconds = chrono::duration_cast<chrono::duration<float>>(end - start);
   int64_t transactions = ops.size() * num_iters;
-  printf("  Transactions: %ld\n", transactions);
-  printf("  TPS: %0.3f K\n", transactions / seconds.count() / 1000.);
+  printf(": %0.3f kTPS\n", transactions / seconds.count() / 1000.);
   return num_finds;
 }
 
@@ -76,23 +75,27 @@ vector<TestOp> GenerateOps(int64_t num_ops, int64_t max_key,
 }
 
 // Running single threaded benchmark.
-// Testing btree
-//   Transactions: 25000000
-//   TPS: 9737.326 K
-// Testing std unordered map
-//   Transactions: 25000000
-//   TPS: 38972.620 K
+//   Find: 70%   Insert: 20%   Remove: 10%
+// Testing btree: 9599.759 kTPS
+// Testing std map: 5919.081 kTPS
+// Testing std unordered map: 38531.072 kTPS
 int main(int argc, char** argv) {
   srand(0);
   const int num_iters = 5;
+
+  const int percent_find = 70;
+  const int percent_insert = 20;
 
   string mode = "st";
   if (argc == 2) mode = argv[1];
   if (mode == "st") {
     printf("Running single threaded benchmark.\n");
-    vector<TestOp> ops = GenerateOps(5000000L, 50000, 70, 20);
+    vector<TestOp> ops = GenerateOps(5000000L, 50000, percent_find, percent_insert);
+    printf("  Find: %d%%   Insert: %d%%   Remove: %d%%\n",
+        percent_find, percent_insert, 100 - percent_find - percent_insert);
     int64_t btree_finds = TestPerf<BTree>("btree", ops, num_iters);
-    int64_t map_finds = TestPerf<StdUnorderedMap>("std unordered map", ops, num_iters);
+    int64_t map_finds = TestPerf<StdMap>("std map", ops, num_iters);
+    TestPerf<StdUnorderedMap>("std unordered map", ops, num_iters);
     if (btree_finds != map_finds) {
       printf("Incorrect results: %ld != %ld\n", btree_finds, map_finds);
       exit(1);
