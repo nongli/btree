@@ -113,11 +113,12 @@ int main(int argc, char** argv) {
     TestBasicCorrectness<StdMap>("std map", 1000);
     TestBasicCorrectness<StdUnorderedMap>("std unordered map", 1000);
     for (int i = 0; i <= 1000; i += 10) {
+      //TestBasicCorrectness<BTreeV1>("btree_v1", i);
       TestBasicCorrectness<BTree>("btree", i);
     }
   } else if (mode == "stl") {
     for (int i = 0; i < 10; ++i) {
-      TestAgainstStl<BTree>(100000, 100000);
+      TestAgainstStl<BTreeV1>(100000, 100000);
     }
   } else {
     printf("Usage: test-correctness [basic|stl]\n");

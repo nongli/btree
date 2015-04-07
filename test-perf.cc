@@ -76,9 +76,10 @@ vector<TestOp> GenerateOps(int64_t num_ops, int64_t max_key,
 
 // Running single threaded benchmark.
 //   Find: 70%   Insert: 20%   Remove: 10%
-// Testing btree: 9599.759 kTPS
-// Testing std map: 5919.081 kTPS
-// Testing std unordered map: 38531.072 kTPS
+// Testing btree: 9810.000 kTPS
+// Testing btree_v1: 9619.339 kTPS
+// Testing std map: 5870.611 kTPS
+// Testing std unordered map: 38524.896 kTPS
 int main(int argc, char** argv) {
   srand(0);
   const int num_iters = 5;
@@ -94,6 +95,7 @@ int main(int argc, char** argv) {
     printf("  Find: %d%%   Insert: %d%%   Remove: %d%%\n",
         percent_find, percent_insert, 100 - percent_find - percent_insert);
     int64_t btree_finds = TestPerf<BTree>("btree", ops, num_iters);
+    TestPerf<BTreeV1>("btree_v1", ops, num_iters);
     int64_t map_finds = TestPerf<StdMap>("std map", ops, num_iters);
     TestPerf<StdUnorderedMap>("std unordered map", ops, num_iters);
     if (btree_finds != map_finds) {

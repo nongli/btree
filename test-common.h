@@ -6,7 +6,11 @@
 #include <vector>
 #include <algorithm>
 
+// Must be 3+
+#define ORDER 7
+
 #include "btree.h"
+#include "btree_v1.h"
 #include "stdtree.h"
 
 using namespace std;
