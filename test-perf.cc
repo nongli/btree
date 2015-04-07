@@ -53,7 +53,8 @@ int64_t TestPerf(const char* name, const vector<TestOp>& ops, int num_iters) {
   return num_finds;
 }
 
-vector<TestOp> GenerateOps(int64_t num_ops, int64_t max_key, int percentFind, int percentInsert) {
+vector<TestOp> GenerateOps(int64_t num_ops, int64_t max_key,
+    int percentFind, int percentInsert) {
   if (percentFind + percentInsert > 100) {
     printf("percentFind and percentInsert sum to > 100.\n");
     exit(1);
@@ -74,6 +75,13 @@ vector<TestOp> GenerateOps(int64_t num_ops, int64_t max_key, int percentFind, in
   return ops;
 }
 
+// Running single threaded benchmark.
+// Testing btree
+//   Transactions: 25000000
+//   TPS: 9737.326 K
+// Testing std unordered map
+//   Transactions: 25000000
+//   TPS: 38972.620 K
 int main(int argc, char** argv) {
   srand(0);
   const int num_iters = 5;
@@ -83,8 +91,12 @@ int main(int argc, char** argv) {
   if (mode == "st") {
     printf("Running single threaded benchmark.\n");
     vector<TestOp> ops = GenerateOps(5000000L, 50000, 70, 20);
-    TestPerf<BTree>("btree", ops, num_iters);
-    TestPerf<StdUnorderedMap>("std unordered map", ops, num_iters);
+    int64_t btree_finds = TestPerf<BTree>("btree", ops, num_iters);
+    int64_t map_finds = TestPerf<StdUnorderedMap>("std unordered map", ops, num_iters);
+    if (btree_finds != map_finds) {
+      printf("Incorrect results: %ld != %ld\n", btree_finds, map_finds);
+      exit(1);
+    }
   } else {
     printf("Unknown mode.\n");
     exit(1);

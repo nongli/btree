@@ -6,17 +6,15 @@
 #include <cstdint>
 #include <sstream>
 
-// Must be 2+
+// Must be 3+
 #define ORDER 7
 
 class BTree {
  public:
   BTree() : size_(0) {
-    root_ = new Node;
-    root_->is_leaf = true;
+    root_ = new Node(true, NULL);
     root_->prev = root_->next = NULL;
     root_->num_values = 0;
-    root_->parent = NULL;
   }
 
   ~BTree() {
@@ -41,7 +39,7 @@ class BTree {
     //printf("BTREE: Finding %ld\n", key);
     Node* leaf_node = FindLeafNode(root_, key, false);
     if (leaf_node == NULL) return End();
-    assert(leaf_node->is_leaf);
+    assert(leaf_node->is_leaf());
     int idx = IndexOfKey(leaf_node, key);
     if (idx == -1) return End();
     return Iterator(this, leaf_node->values[idx].value);
@@ -51,7 +49,7 @@ class BTree {
     //printf("BTREE: Update %ld\n", key);
     Node* leaf_node = FindLeafNode(root_, key, false);
     if (leaf_node == NULL) return false;
-    assert(leaf_node->is_leaf);
+    assert(leaf_node->is_leaf());
     int idx = IndexOfKey(leaf_node, key);
     if (idx == -1) return false;
     leaf_node->values[idx].value = value;
@@ -62,7 +60,7 @@ class BTree {
     //printf("BTREE: Inserting %ld\n", key);
     Node* leaf_node = FindLeafNode(root_, key, true);
     if (leaf_node == NULL) return End();
-    assert(leaf_node->is_leaf);
+    assert(leaf_node->is_leaf());
     if (!InsertInNode<true>(leaf_node, key, value)) return End();
     VerifyTreeIntegrity();
     ++size_;
@@ -73,7 +71,7 @@ class BTree {
     //printf("BTREE: Upsert %ld\n", key);
     Node* leaf_node = FindLeafNode(root_, key, true);
     if (leaf_node == NULL) return End();
-    assert(leaf_node->is_leaf);
+    assert(leaf_node->is_leaf());
     int idx = IndexOfKey(leaf_node, key);
     if (idx == -1) {
       if (!InsertInNode<true>(leaf_node, key, value)) return End();
@@ -88,7 +86,7 @@ class BTree {
     //printf("BTREE: Removing %ld\n", key);
     Node* leaf_node = FindLeafNode(root_, key, false);
     if (leaf_node == NULL) return false;
-    assert(leaf_node->is_leaf);
+    assert(leaf_node->is_leaf());
     if (!RemoveKeyFromNode(leaf_node, key)) return false;
     VerifyTreeIntegrity();
     --size_;
@@ -104,27 +102,11 @@ class BTree {
     PrintNode(root_, 0);
   }
 
-  void PrintAllKeys(bool backwards = false) const {
-    std::vector<int64_t> keys;
-    CollectAllKeys(&keys, backwards);
-    printf("Printing all values %s\n", backwards ? "backwards" : "");
-    for (size_t i = 0; i < keys.size(); ++i) {
-      printf("%ld ", keys[i]);
-      if (i != 0) {
-        if (backwards) {
-          assert(keys[i - 1] > keys[i]);
-        } else {
-          assert(keys[i - 1] < keys[i]);
-        }
-      }
-    }
-    printf("\n");
-  }
-
   void CollectAllKeys(std::vector<int64_t>* keys, bool backwards = false) const {
     keys->clear();
     Node* node = root_;
-    while (!node->is_leaf) {
+    // Get the left most/right most child.
+    while (node->is_internal()) {
       if (backwards) {
         node = GetChildNode(node, node->num_values - 1);
       } else {
@@ -160,14 +142,18 @@ class BTree {
 
   struct Node {
     Node* parent;
-    bool is_leaf;
-    int64_t min_key; // Only used for internal nodes.
+    bool is_leaf_;
     int32_t num_values;
+    int64_t min_key; // Only used for internal nodes.
     Link values[ORDER];
 
     // Only used for leaf nodes
     Node* prev;
     Node* next;
+
+    bool is_leaf() const { return is_leaf_; }
+    bool is_internal() const { return !is_leaf_; }
+    Node(bool is_leaf, Node* parent) : parent(parent), is_leaf_(is_leaf) {}
   };
 
   void MoveValues(Node* node, int dst_idx, int src_idx, int n) const {
@@ -179,7 +165,7 @@ class BTree {
     assert(dst != src);
     assert(dst->parent == src->parent);
     memcpy(&dst->values[dst_idx], &src->values[src_idx], n * sizeof(Link));
-    if (!dst->is_leaf) {
+    if (dst->is_internal()) {
       // Moving values between internal nodes. Need to update the parent pointer for
       // all the nodes from src that were moved.
       for (int i = 0; i < n; ++i) {
@@ -191,7 +177,7 @@ class BTree {
   // Moves src[src_idx] into dst[dst_idx];
   void MoveNode(Node* dst, int dst_idx, Node* src, int src_idx) const {
     dst->values[dst_idx] = src->values[src_idx];
-    if (!dst->is_leaf) dst->values[dst_idx].node->parent = dst;
+    if (dst->is_internal()) dst->values[dst_idx].node->parent = dst;
     ++dst->num_values;
     --src->num_values;
     assert(dst->num_values <= ORDER);
@@ -207,12 +193,12 @@ class BTree {
   // Returns the smallest key in the subtree from node.
   int64_t SmallestKey(const Node* node) const {
     assert(node->num_values > 0);
-    return node->is_leaf ? node->values[0].key : node->min_key;
+    return node->is_leaf() ? node->values[0].key : node->min_key;
   }
 
   // Returns the child node for parent. Parent must be an internal node.
   Node* GetChildNode(const Node* parent, int idx) const {
-    assert(!parent->is_leaf);
+    assert(parent->is_internal());
     assert(idx < parent->num_values);
     return parent->values[idx].node;
   }
@@ -228,7 +214,7 @@ class BTree {
   }
 
   // Updates the separator key in node->parent
-  void UpdateParentSeparator(Node* node, int64_t old_key, int64_t new_key) {
+  void UpdateParentSeparator(Node* node, int64_t old_key, int64_t new_key) const {
     Node* parent = node->parent;
     assert(parent != NULL);
     while (parent != NULL) {
@@ -246,12 +232,27 @@ class BTree {
     }
   }
 
+  // Updates min_key from node to the root with 'key'
+  void PropagateMinKey(Node* node, int64_t key) const {
+    while (node != NULL) {
+      if (key >= node->min_key) break;
+      node->min_key = key;
+      node = node->parent;
+    }
+  }
+
+  // node->values[idx] = {key, value}
+  void AssignInNode(Node* node, int idx, int64_t key, void* value) const {
+    node->values[idx].key = key;
+    node->values[idx].value = value;
+  }
+
   // Finds the child in node which can contain key. If insert, then this never returns
   // NULL and returns the leaf node to insert into. If not insert, returns NULL if this
   // key cannot be in any of the children.
   // node must be an internal node.
   Node* FindInInternalNode(Node* node, int64_t key, bool insert) const {
-    assert(!node->is_leaf);
+    assert(node->is_internal());
     assert(node->num_values > 0);
     if (key < node->min_key) return (insert ? GetChildNode(node, 0) : NULL);
     for (int i = 0; i < node->num_values; ++i) {
@@ -263,19 +264,25 @@ class BTree {
   // Finds the leaf node in the subtree from node which can contain the key. Returns NULL
   // if the key does not exist and insert is false.
   Node* FindLeafNode(Node* node, int64_t key, bool insert) const {
-    while (!node->is_leaf) {
+    while (node->is_internal()) {
       node = FindInInternalNode(node, key, insert);
       if (node == NULL) return NULL;
     }
     return node;
   }
 
-  // Inserts right_sibling to the right of node, maintaing the doubly-linked list.
+  // Inserts right_sibling to the right of node, maintaining the doubly-linked list.
   void ConnectSiblingNode(Node* node, Node* right_sibling) const {
     right_sibling->next = node->next;
     right_sibling->prev = node;
     if (node->next != NULL) node->next->prev = right_sibling;
     node->next = right_sibling;
+  }
+
+  // Removes node from the doubly linked list.
+  void RemoveNode(Node* node) {
+    node->prev->next = node->next;
+    if (node->next != NULL) node->next->prev = node->prev;
   }
 
   // Splits 'node' to insert a value at *value_idx. Returns the node that the value
@@ -294,15 +301,13 @@ class BTree {
     if (*value_idx < split_idx) --split_idx;
 
     // Make the new node, copy the bottom half of the values and shrink the original node.
-    Node* new_node = new Node;
-    new_node->is_leaf = node->is_leaf;
-    new_node->parent = node->parent;
+    Node* new_node = new Node(node->is_leaf(), node->parent);
     new_node->num_values = ORDER - split_idx - 1;
     node->num_values = split_idx + 1;
     CopyValues(new_node, 0, node, split_idx + 1, new_node->num_values);
     ConnectSiblingNode(node, new_node);
 
-    if (!new_node->is_leaf) {
+    if (new_node->is_internal()) {
       // This is an internal node. It needs the min key.
       new_node->min_key = SmallestKey(GetChildNode(new_node, 0));
     }
@@ -310,17 +315,13 @@ class BTree {
     // Update the parent chain.
     if (node->parent == NULL) {
       // Need a new root.
-      Node* root = new Node;
-      root->is_leaf = false;
-      root->parent = root->prev = root->next = NULL;
+      Node* root = new Node(false, NULL);
+      root->prev = root->next = NULL;
+      AssignInNode(root, 0, LargestKey(node), node);
+      AssignInNode(root, 1, LargestKey(new_node), new_node);
       root->num_values = 2;
-      root->values[0].node = node;
-      root->values[0].key = LargestKey(node);
-      root->values[1].node = new_node;
-      root->values[1].key = LargestKey(new_node);
       root->min_key = SmallestKey(node);
-      node->parent = root;
-      new_node->parent = root;
+      node->parent = new_node->parent = root;
       root_ = root;
     } else {
       int64_t old_separator = LargestKey(new_node);
@@ -352,7 +353,7 @@ class BTree {
     if (node->num_values == ORDER) {
       node = SplitNodeForInsert(node, &i);
       assert(node->num_values < ORDER);
-      if (!node->is_leaf) reinterpret_cast<Node*>(value)->parent = node;
+      if (node->is_internal()) reinterpret_cast<Node*>(value)->parent = node;
     }
 
     if (i == node->num_values && node->parent != NULL) {
@@ -363,13 +364,12 @@ class BTree {
     if (i == 0) {
       // Propagate min up to the root.
       int64_t min_key = IS_VALUE ? key : SmallestKey(reinterpret_cast<Node*>(value));
-      if (!node->is_leaf) node->min_key = min_key;
+      if (node->is_internal()) node->min_key = min_key;
       PropagateMinKey(node->parent, min_key);
     }
 
     MoveValues(node, i + 1, i, node->num_values - i);
-    node->values[i].key = key;
-    node->values[i].value = value;
+    AssignInNode(node, i, key, value);
     ++node->num_values;
     return true;
   }
@@ -385,34 +385,18 @@ class BTree {
 
     // Propagate min and separators up to the root.
     if (node->parent != NULL) {
-      if (key_idx == 0) {
-        Node* parent = node->parent;
-        int64_t new_min = node->values[0].key;
-        while (parent != NULL) {
-          if (parent->min_key != key) break;
-          parent->min_key = new_min;
-          parent = parent->parent;
-        }
-      }
+      if (key_idx == 0) PropagateMinKey(node->parent, SmallestKey(node));
 
       // Propagate separators up the root.
       if (key_idx == node->num_values) {
         int64_t new_key = LargestKey(node);
         Node* parent = node->parent;
         while (parent != NULL) {
-          Node* next = NULL;
-          for (int i = 0; i < parent->num_values; ++i) {
-            if (parent->values[i].key < key) continue;
-            if (parent->values[i].key == key) {
-              parent->values[i].key = new_key;
-              if (i == parent->num_values - 1) {
-                // Need to keep going up.
-                next = parent->parent;
-              }
-            }
-            break;
-          }
-          parent = next;
+          int separator_idx = IndexOfKey(parent, key);
+          if (separator_idx == -1) break;
+          parent->values[separator_idx].key = new_key;
+          if (separator_idx != parent->num_values - 1) break;
+          parent = parent->parent;
         }
       }
     }
@@ -420,7 +404,7 @@ class BTree {
     // Need to rebalance.
     if (node != root_ && node->num_values < ORDER / 2) RebalanceNode(node);
 
-    if (node == root_ && !node->is_leaf && node->num_values == 1) {
+    if (node == root_ && node->is_internal() && node->num_values == 1) {
       // In this case, we've collapsed to the root which now only has 1 child. Replace the
       // root with its child and delete the root.
       root_ = GetChildNode(node, 0);
@@ -429,14 +413,6 @@ class BTree {
     }
 
     return true;
-  }
-
-  void PropagateMinKey(Node* node, int64_t key) {
-    while (node != NULL) {
-      if (key >= node->min_key) break;
-      node->min_key = key;
-      node = node->parent;
-    }
   }
 
   // Rebalances node because it is too small. This can either pull a value from one of
@@ -452,7 +428,7 @@ class BTree {
         MoveValues(node, 1, 0, node->num_values);
         MoveNode(node, 0, node->prev, node->prev->num_values - 1);
         UpdateParentSeparator(node->prev, old_separator_key, LargestKey(node->prev));
-        if (!node->is_leaf) PropagateMinKey(node, SmallestKey(GetChildNode(node, 0)));
+        if (node->is_internal()) PropagateMinKey(node, SmallestKey(GetChildNode(node, 0)));
       } else {
         // Move node into node->prev.
         CopyValues(node->prev, node->prev->num_values, node, 0, node->num_values);
@@ -469,11 +445,8 @@ class BTree {
         // Fix up the separators in the parent which can call this recursively.
         RemoveKeyFromNode(node->parent, old_separator_key);
 
-        // Finally fix up the side links. We have:
-        // node->prev <--> node <--> [some node]
-        // and want to delete node. Some node can be NULL.
-        node->prev->next = node->next;
-        if (node->next != NULL) node->next->prev = node->prev;
+        // Finally fix up the side links and delete the node.
+        RemoveNode(node);
         delete node;
       }
     } else if (node->next != NULL && node->next->parent == node->parent) {
@@ -499,12 +472,11 @@ class BTree {
         // Fix up the separators in the parent which can call this recursively.
         RemoveKeyFromNode(node->parent, old_separator_key);
 
-        // Finally fix up the side links. We have:
+        // Finally fix up the side links and delete the node.
         // node <--> node->next <--> [some node]
         // and want to delete node->next. Some node can be NULL.
         Node* node_to_delete = node->next;
-        node->next = node->next->next;
-        if (node->next != NULL) node->next->prev = node;
+        RemoveNode(node_to_delete);
         delete node_to_delete;
       }
     } else {
@@ -517,7 +489,7 @@ class BTree {
   // Depth first traversal to delete the entire tree. This *cannot* be used to delete a
   // subtree.
   void Delete(Node* node) {
-    if (!node->is_leaf) {
+    if (node->is_internal()) {
       for (int i = 0; i < node->num_values; ++i) {
         Delete(GetChildNode(node, i));
       }
@@ -530,17 +502,17 @@ class BTree {
     if (level != -1) {
       ss << level << ": ";
     }
-    ss << (node->is_leaf ? "<" : "[");
-    if (!node->is_leaf) {
+    ss << (node->is_leaf() ? "<" : "[");
+    if (node->is_internal()) {
       ss << "(" << node->min_key << ") ";
     }
     for (int i = 0; i < node->num_values; ++i) {
       if (i != 0) ss << " ";
       ss << node->values[i].key;
     }
-    ss << (node->is_leaf ? ">" : "]");
+    ss << (node->is_leaf() ? ">" : "]");
     printf("%s\n", ss.str().c_str());
-    if (level != -1 && !node->is_leaf) {
+    if (level != -1 && node->is_internal()) {
       for (int i = 0; i < node->num_values; ++i) {
         PrintNode(GetChildNode(node, i), level + 1);
       }
@@ -561,7 +533,7 @@ class BTree {
         prev = l;
         l = l->next;
       }
-      if (node->is_leaf) break;
+      if (node->is_leaf()) break;
       node = node->values[0].node;
     }
 #endif
@@ -572,7 +544,7 @@ class BTree {
       assert(node->num_values >= ORDER / 2);
       assert(node->num_values <= ORDER);
     }
-    if (!node->is_leaf) {
+    if (node->is_internal()) {
       assert(node->min_key < node->values[0].key);
       for (int i = 0; i < node->num_values; ++i) {
         Node* child = node->values[i].node;

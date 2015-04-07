@@ -26,6 +26,24 @@ bool Find(T* tree, int64_t key) {
   return !tree->Find(key).AtEnd();
 }
 
+template <typename T>
+void PrintAllKeys(const T* tree, bool backwards = false) {
+  std::vector<int64_t> keys;
+  tree->CollectAllKeys(&keys, backwards);
+  printf("Printing all values %s\n", backwards ? "backwards" : "");
+  for (size_t i = 0; i < keys.size(); ++i) {
+    printf("%ld ", keys[i]);
+    if (i != 0) {
+      if (backwards) {
+        assert(keys[i - 1] > keys[i]);
+      } else {
+        assert(keys[i - 1] < keys[i]);
+      }
+    }
+  }
+  printf("\n");
+}
+
 enum Op {
   FIND,
   INSERT,
